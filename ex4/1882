@@ -1,0 +1,180 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+// Represents a server's unchanging configuration
+typedef struct {
+    int weight;
+    int index;
+} Server;
+
+// Represents a server currently executing a task
+typedef struct {
+    long long free_time;
+    Server server;
+} BusyServer;
+
+// --- FREE HEAP IMPLEMENTATION (Min-Heap based on weight, then index) ---
+typedef struct {
+    Server* data;
+    int size;
+} FreeHeap;
+
+int compareFree(Server a, Server b) {
+    if (a.weight != b.weight) {
+        return (a.weight > b.weight) - (a.weight < b.weight);
+    }
+    return (a.index > b.index) - (a.index < b.index);
+}
+
+void pushFree(FreeHeap* heap, Server s) {
+    int curr = heap->size++;
+    heap->data[curr] = s;
+    while (curr > 0) {
+        int parent = (curr - 1) / 2;
+        if (compareFree(heap->data[curr], heap->data[parent]) < 0) {
+            Server temp = heap->data[curr];
+            heap->data[curr] = heap->data[parent];
+            heap->data[parent] = temp;
+            curr = parent;
+        } else {
+            break;
+        }
+    }
+}
+
+Server popFree(FreeHeap* heap) {
+    Server top = heap->data[0];
+    heap->size--;
+    heap->data[0] = heap->data[heap->size];
+    int curr = 0;
+    while (2 * curr + 1 < heap->size) {
+        int left = 2 * curr + 1;
+        int right = 2 * curr + 2;
+        int smallest = left;
+        if (right < heap->size && compareFree(heap->data[right], heap->data[left]) < 0) {
+            smallest = right;
+        }
+        if (compareFree(heap->data[smallest], heap->data[curr]) < 0) {
+            Server temp = heap->data[curr];
+            heap->data[curr] = heap->data[smallest];
+            heap->data[smallest] = temp;
+            curr = smallest;
+        } else {
+            break;
+        }
+    }
+    return top;
+}
+
+// --- BUSY HEAP IMPLEMENTATION (Min-Heap based on free_time) ---
+typedef struct {
+    BusyServer* data;
+    int size;
+} BusyHeap;
+
+int compareBusy(BusyServer a, BusyServer b) {
+    if (a.free_time != b.free_time) {
+        return (a.free_time > b.free_time) - (a.free_time < b.free_time);
+    }
+    if (a.server.weight != b.server.weight) {
+        return (a.server.weight > b.server.weight) - (a.server.weight < b.server.weight);
+    }
+    return (a.server.index > b.server.index) - (a.server.index < b.server.index);
+}
+
+void pushBusy(BusyHeap* heap, BusyServer bs) {
+    int curr = heap->size++;
+    heap->data[curr] = bs;
+    while (curr > 0) {
+        int parent = (curr - 1) / 2;
+        if (compareBusy(heap->data[curr], heap->data[parent]) < 0) {
+            BusyServer temp = heap->data[curr];
+            heap->data[curr] = heap->data[parent];
+            heap->data[parent] = temp;
+            curr = parent;
+        } else {
+            break;
+        }
+    }
+}
+
+BusyServer popBusy(BusyHeap* heap) {
+    BusyServer top = heap->data[0];
+    heap->size--;
+    heap->data[0] = heap->data[heap->size];
+    int curr = 0;
+    while (2 * curr + 1 < heap->size) {
+        int left = 2 * curr + 1;
+        int right = 2 * curr + 2;
+        int smallest = left;
+        if (right < heap->size && compareBusy(heap->data[right], heap->data[left]) < 0) {
+            smallest = right;
+        }
+        if (compareBusy(heap->data[smallest], heap->data[curr]) < 0) {
+            BusyServer temp = heap->data[curr];
+            heap->data[curr] = heap->data[smallest];
+            heap->data[smallest] = temp;
+            curr = smallest;
+        } else {
+            break;
+        }
+    }
+    return top;
+}
+
+// --- MAIN PROBLEM SOLVER ---
+int* assignTasks(int* servers, int serversSize, int* tasks, int tasksSize, int* returnSize) {
+    *returnSize = tasksSize;
+    int* ans = (int*)malloc(sizeof(int) * tasksSize);
+
+    // Initialize Heaps
+    FreeHeap freeHeap;
+    freeHeap.data = (Server*)malloc(sizeof(Server) * serversSize);
+    freeHeap.size = 0;
+
+    BusyHeap busyHeap;
+    busyHeap.data = (BusyServer*)malloc(sizeof(BusyServer) * serversSize);
+    busyHeap.size = 0;
+
+    // Populating all available servers into the free heap
+    for (int i = 0; i < serversSize; i++) {
+        Server s = {servers[i], i};
+        pushFree(&freeHeap, s);
+    }
+
+    long long curr_time = 0;
+
+    for (int j = 0; j < tasksSize; j++) {
+        // Fast-forward timeline to matching interval window
+        if (curr_time < j) {
+            curr_time = j;
+        }
+
+        // Hard lock scenario: If no servers are free, skip time to next completion event
+        if (freeHeap.size == 0 && busyHeap.size > 0) {
+            curr_time = busyHeap.data[0].free_time;
+        }
+
+        // Release all jobs concluded up to the current timestamp 
+        while (busyHeap.size > 0 && busyHeap.data[0].free_time <= curr_time) {
+            BusyServer bs = popBusy(&busyHeap);
+            pushFree(&freeHeap, bs.server);
+        }
+
+        // Allocate the task to the top server in the free heap
+        Server assigned = popFree(&freeHeap);
+        ans[j] = assigned.index;
+
+        // Route assigned engine instance to the busy structure tracking runtime 
+        BusyServer new_job;
+        new_job.free_time = curr_time + tasks[j];
+        new_job.server = assigned;
+        pushBusy(&busyHeap, new_job);
+    }
+
+    // Free structures to avoid leaks
+    free(freeHeap.data);
+    free(busyHeap.data);
+
+    return ans;
+}
