@@ -1,0 +1,65 @@
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdlib.h>
+
+typedef struct {
+    pthread_mutex_t mutex;
+    sem_t sem_h;
+    sem_t sem_o;
+    int h_count;
+} H2O;
+
+void releaseHydrogen();
+void releaseOxygen();
+
+H2O* h2oCreate() {
+    H2O* obj = (H2O*) malloc(sizeof(H2O));
+    if (!obj) return NULL;
+    
+    pthread_mutex_init(&obj->mutex, NULL);
+    
+    // Initialise slots: allow up to 2 Hydrogens and 1 Oxygen per molecule
+    sem_init(&obj->sem_h, 0, 2);
+    sem_init(&obj->sem_o, 0, 1);
+    
+    obj->h_count = 0;
+    
+    return obj;
+}
+
+void hydrogen(H2O* obj) {
+    // Wait until a Hydrogen slot is available
+    sem_wait(&obj->sem_h);
+    
+    // releaseHydrogen() outputs "H". Do not change or remove this line.
+    releaseHydrogen();
+    
+    pthread_mutex_lock(&obj->mutex);
+    obj->h_count++;
+    
+    // Once 2 Hydrogens have crossed, reset the counter and release slots for the next molecule batch
+    if (obj->h_count == 2) {
+        obj->h_count = 0;
+        sem_post(&obj->sem_h);
+        sem_post(&obj->sem_h);
+        sem_post(&obj->sem_o);
+    }
+    pthread_mutex_unlock(&obj->mutex);
+}
+
+void oxygen(H2O* obj) {
+    // Wait until the Oxygen slot is available
+    sem_wait(&obj->sem_o);
+    
+    // releaseOxygen() outputs "O". Do not change or remove this line.
+    releaseOxygen();
+}
+
+void h2oFree(H2O* obj) {
+    if (obj) {
+        pthread_mutex_destroy(&obj->mutex);
+        sem_destroy(&obj->sem_h);
+        sem_destroy(&obj->sem_o);
+        free(obj);
+    }
+}
