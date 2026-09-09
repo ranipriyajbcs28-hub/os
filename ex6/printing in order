@@ -1,0 +1,60 @@
+#include <semaphore.h>
+#include <stdlib.h>
+
+typedef struct {
+    // Two semaphores to control the exact execution sequence
+    sem_t sem_first_done;
+    sem_t sem_second_done;
+} Foo;
+
+// Function Declarations
+void printFirst();
+void printSecond();
+void printThird();
+
+Foo* fooCreate() {
+    Foo* obj = (Foo*) malloc(sizeof(Foo));
+    if (!obj) return NULL;
+    
+    // Initialize both semaphores with an initial value of 0
+    sem_init(&obj->sem_first_done, 0, 0);
+    sem_init(&obj->sem_second_done, 0, 0);
+    
+    return obj;
+}
+
+void first(Foo* obj) {
+    // printFirst() outputs "first". Do not change or remove this line.
+    printFirst();
+    
+    // Notify the second thread that 'first' has completed
+    sem_post(&obj->sem_first_done);
+}
+
+void second(Foo* obj) {
+    // Wait until the first thread signals completion
+    sem_wait(&obj->sem_first_done);
+    
+    // printSecond() outputs "second". Do not change or remove this line.
+    printSecond();
+    
+    // Notify the third thread that 'second' has completed
+    sem_post(&obj->sem_second_done);
+}
+
+void third(Foo* obj) {
+    // Wait until the second thread signals completion
+    sem_wait(&obj->sem_second_done);
+    
+    // printThird() outputs "third". Do not change or remove this line.
+    printThird();
+}
+
+void fooFree(Foo* obj) {
+    if (obj) {
+        // Destroy semaphores to free system resources cleanly
+        sem_destroy(&obj->sem_first_done);
+        sem_destroy(&obj->sem_second_done);
+        free(obj);
+    }
+}
